@@ -13,13 +13,12 @@ jobs:
           python-version: '3.12'
       - run: pip install telethon
 
-      - name: Find the target chat
+      - name: Direct membership query
         run: |
           cat > /tmp/probe.py <<'PY'
           import asyncio, os
           from telethon import TelegramClient
           from telethon.sessions import StringSession
-          from telethon.tl.types import Channel, Chat
 
           async def go():
               c = TelegramClient(StringSession(os.environ["TELEGRAM_SESSION"]),
@@ -27,46 +26,17 @@ jobs:
                                  os.environ["TELETHON_API_HASH"])
               await c.connect()
               raw = (os.environ.get("TARGET_CHAT_ID") or "").strip()
-              print(f"configured TARGET_CHAT_ID shape: len={len(raw)} "
-                    f"numeric={raw.lstrip('-').isdigit()}")
-
-              rows = []
-              async for d in c.iter_dialogs():
-                  e = d.entity
-                  if isinstance(e, Chat):
-                      rows.append((f"-{e.id}", e.title, "basic group", d))
-                  elif isinstance(e, Channel) and e.megagroup:
-                      rows.append((f"-100{e.id}", e.title, "supergroup", d))
-
-              print(f"\ntotal groups/channels in dialogs: {len(rows)}")
-
-              # The user just sent /start in the target group, so the newest
-              # active group is almost certainly it.
-              def newest(r):
-                  return r[3].date or 0
-              recent = sorted(rows, key=newest, reverse=True)[:8]
-              print("\n8 most recently active groups:")
-              for gid, title, kind, d in recent:
-                  print(f"  {gid:>16}  {title!r}  [{kind}]  last={d.date}")
-
-              match = [r for r in rows if r[0] == raw]
-              if match:
-                  gid, title, kind, _ = match[0]
-                  print(f"\nMATCH: configured id == {title!r} [{kind}]")
-                  try:
-                      inp = await c.get_input_entity(match[0][3].entity)
-                      print(f"  resolves: {inp.__class__.__name__}")
-                  except Exception as ex:
-                      print(f"  resolve FAILED: {type(ex).__name__}: {ex}")
-              else:
-                  print(f"\nconfigured id {raw} is NOT in the dialogs list")
-
-              # Show the bare channel id too, in case of a -100 mismatch.
-              if raw.lstrip("-").isdigit():
-                  bare = raw.lstrip("-")
-                  for gid, title, kind, d in rows:
-                      if gid.lstrip("-100").lstrip("-") == bare:
-                          print(f"  same bare id, other form: {gid} {title!r} [{kind}]")
+              try:
+                  inp = await c.get_input_entity(raw)
+                  print(f"get_input_entity OK -> {inp.__class__.__name__}")
+                  # Now try to actually read a message from it.
+                  msgs = await c.get_messages(inp, limit=3)
+                  print(f"read {len(msgs)} message(s) from target")
+                  for m in msgs:
+                      print(f"  id={m.id} date={m.date} text={m.text[:40]!r}")
+              except Exception as ex:
+                  print(f"FAIL: {type(ex).__name__}: {ex}")
+                  print("  -> this account cannot see that chat at all")
               await c.disconnect()
 
           asyncio.run(go())
