@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from telethon import TelegramClient
+from telethon import TelegramClient, errors, utils
 from telethon.errors import FloodWaitError
 from telethon.sessions import StringSession
 from telethon.tl.types import DocumentAttributeAudio
@@ -59,6 +59,28 @@ def load_channels():
     return out
 
 
+async def resolve_target(client, raw):
+    """Turn TARGET_CHAT_ID into an entity we can post to.
+
+    Chat -> -<id>. Supergroup/broadcast channel -> -100<id>. The raw id works
+    only if the entity cache happens to be warm, so scan the dialogs once and
+    match on the computed peer id.
+    """
+    raw = raw.strip()
+    if not raw.lstrip("-").isdigit():
+        return raw  # a @username: get_input_entity resolves that directly
+
+    async for dialog in client.iter_dialogs():
+        entity = dialog.entity
+        if str(utils.get_peer_id(entity)) == raw:
+            print(f"target resolved: {entity.title!r} "
+                  f"(id={entity.id}, broadcast={getattr(entity, 'broadcast', False)}, "
+                  f"megagroup={getattr(entity, 'megagroup', False)})")
+            return entity
+    sys.exit(f"TARGET_CHAT_ID {raw} is not in this account's dialogs — "
+             f"join the chat, or check the id")
+
+
 def load_state():
     try:
         return json.loads((HERE / "state.json").read_text(encoding="utf-8"))
@@ -82,6 +104,13 @@ async def main():
     await client.connect()
     if not await client.is_user_authorized():
         sys.exit("session not authorized — regenerate TELEGRAM_SESSION")
+
+    # A StringSession carries only the auth key, no entity cache. So a raw id
+    # like -1001234567890 raises "Cannot find any entity" on a cold client even
+    # when we belong to that chat. Walking the dialogs fills the cache and hands
+    # back the real entity, which does resolve.
+    target = await resolve_target(client, target)
+    print(f"target: {target}")
 
     state = load_state()
     forwarded = failed = 0

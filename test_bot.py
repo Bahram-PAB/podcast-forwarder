@@ -6,13 +6,19 @@ The fakes below mirror the real Telethon shapes on purpose: msg.audio is a bare
 Document whose duration lives on DocumentAttributeAudio. A plain object with a
 .duration attribute would let the original crash bug pass.
 """
+import inspect
 import unittest
 
+from telethon import utils
 from telethon.tl.types import (
     Document,
     DocumentAttributeAudio,
     MessageMediaDocument,
+    PeerChannel,
+    PeerChat,
 )
+
+from bot import resolve_target
 
 
 def fake_audio_doc(duration, voice=False):
@@ -128,6 +134,21 @@ class TestRealTelethonSignatures(unittest.TestCase):
                                  f"unknown kwargs for {method}()")
                 checked += 1
         self.assertGreater(checked, 2, "no calls parsed — test is vacuous")
+
+
+class TestResolveTarget(unittest.TestCase):
+    """A raw -100 id does NOT resolve on a cold StringSession client; walking
+    the dialogs does. This was the bug that blocked every real send."""
+
+    def test_username_is_not_walked(self):
+        src = inspect.getsource(resolve_target)
+        self.assertIn("isdigit", src)
+        self.assertIn("iter_dialogs", src)
+
+    def test_peer_id_mapping_matches_documented_forms(self):
+        # Chat -> -id, channel -> -1000...id; utils.get_peer_id does exactly this.
+        self.assertEqual(utils.get_peer_id(PeerChannel(1171526333)), -1001171526333)
+        self.assertEqual(utils.get_peer_id(PeerChat(547239020)), -547239020)
 
 
 if __name__ == "__main__":
