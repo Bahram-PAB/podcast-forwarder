@@ -258,7 +258,16 @@ class TestCursor(unittest.TestCase):
     def test_walks_oldest_first_so_a_failed_send_stops_the_cursor(self):
         # reversed() keeps ascending id order, so a failure leaves the cursor
         # on the last post that actually made it instead of skipping past it.
-        self.assertIn("for msg in reversed(msgs)", inspect.getsource(bot))
+        self.assertIn("for msg in reversed(page)", inspect.getsource(bot))
+
+    def test_scans_every_page_not_just_the_first_100(self):
+        # 8-hour cron: one busy channel outgrows a single GetHistory page, and a
+        # single call would drop the overflow forever.
+        src = inspect.getsource(bot)
+        body = src[src.index("async def main"):]
+        self.assertIn("limit=SCAN_PAGE", body)
+        self.assertIn("while True:", body)
+        self.assertIn("seen = page[-1].id", body)
 
 
 class TestResolveTarget(unittest.TestCase):

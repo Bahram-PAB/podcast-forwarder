@@ -1,7 +1,7 @@
 name: forward
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '0 */8 * * *'   # every 8h, so the repo runs under observation for days
   workflow_dispatch:
 # One Telegram session = one auth key = one IP. GitHub runners get random IPs,
 # so two overlapping runs would burn the session with AuthKeyDuplicatedError.

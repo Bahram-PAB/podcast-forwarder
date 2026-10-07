@@ -13,6 +13,10 @@ from telethon.sessions import StringSession
 from telethon.tl.types import DocumentAttributeAudio
 
 MIN_SECONDS = 900
+# Telegram answers GetHistory with at most 100 messages; more than that needs
+# another call. The cron gap is 8 hours now, so one busy channel can outgrow a
+# single page and the cursor would never see the overflow.
+SCAN_PAGE = 100
 HERE = Path(__file__).resolve().parent
 SEND_GAP = 2  # seconds between forwards (flood safety)
 # Backfill mode: forward every long file already in the channels, oldest first,
@@ -208,38 +212,51 @@ async def main():
         seen = state["channels"][handle]
         try:
             # min_id=seen excludes that id and everything older: exactly the new posts.
-            msgs = await client.get_messages(entity, limit=100, min_id=seen)
-            # Oldest first, so the cursor never jumps past a post that then fails
-            # to send — min() pinned it at the baseline and dropped anything past
-            # the 100-message window.
-            for msg in reversed(msgs):
-                media = long_media(msg)
-                if media is None:
-                    # Nothing to send — safe to move the cursor past this post.
+            # Paged because Telegram returns at most 100 per GetHistory call: with an
+            # 8-hour cron a busy channel can post more than that, and a single call
+            # would silently drop the overflow instead of sending it next run.
+            scanned = 0
+            while True:
+                page = await client.get_messages(entity, limit=SCAN_PAGE, min_id=seen)
+                if not page:
+                    break
+                scanned += len(page)
+                # Oldest first, so the cursor never jumps past a post that then fails
+                # to send — min() pinned it at the baseline and dropped anything past
+                # the 100-message window.
+                for msg in reversed(page):
+                    media = long_media(msg)
+                    if media is None:
+                        # Nothing to send — safe to move the cursor past this post.
+                        state["channels"][handle] = max(state["channels"][handle], msg.id)
+                        continue
+                    if already_sent(state, media_key(handle, msg)):
+                        # Replay of an already-forwarded file: no second send, but the
+                        # cursor still advances so this range is not re-read.
+                        state["channels"][handle] = max(state["channels"][handle], msg.id)
+                        continue
+                    # Sending the media reference copies server-side: no download,
+                    # no 50 MB cap, and the session account must be in the group.
+                    await client.send_file(
+                        target, msg.media,
+                        caption=format_caption(name, audio_duration(msg)),
+                    )
+                    remember_sent(state, media_key(handle, msg))
+                    # Cursor advances only after a confirmed send, so a failure
+                    # retries this post on the next run instead of losing it.
                     state["channels"][handle] = max(state["channels"][handle], msg.id)
-                    continue
-                if already_sent(state, media_key(handle, msg)):
-                    # Replay of an already-forwarded file: no second send, but the
-                    # cursor still advances so this range is not re-read.
-                    state["channels"][handle] = max(state["channels"][handle], msg.id)
-                    continue
-                # Sending the media reference copies server-side: no download,
-                # no 50 MB cap, and the session account must be in the group.
-                await client.send_file(
-                    target, msg.media,
-                    caption=format_caption(name, audio_duration(msg)),
-                )
-                remember_sent(state, media_key(handle, msg))
-                # Cursor advances only after a confirmed send, so a failure
-                # retries this post on the next run instead of losing it.
-                state["channels"][handle] = max(state["channels"][handle], msg.id)
-                forwarded += 1
-                clock = format_caption("", audio_duration(msg)).splitlines()[1]
-                print(f"✅ {name} — {clock}")
-                await asyncio.sleep(SEND_GAP)
+                    forwarded += 1
+                    clock = format_caption("", audio_duration(msg)).splitlines()[1]
+                    print(f"✅ {name} — {clock}")
+                    await asyncio.sleep(SEND_GAP)
 
-            if msgs:
-                print(f"   {name}: {len(msgs)} new post(s)")
+                # Nothing left above min_id=seen once the page stops advancing.
+                if page[-1].id <= seen:
+                    break
+                seen = page[-1].id
+
+            if scanned:
+                print(f"   {name}: {scanned} new post(s)")
         except FloodWaitError as e:
             # One rate-limited channel must not kill the whole run.
             failed += 1

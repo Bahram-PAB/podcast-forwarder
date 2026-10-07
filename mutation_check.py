@@ -15,8 +15,8 @@ MUTANTS = [
      'max(state["channels"][handle], msg.id)',
      'min(state["channels"][handle], msg.id)'),
     ("drop reversed() (descending order skips a failed send)",
-     "for msg in reversed(msgs):",
-     "for msg in msgs:"),
+     "for msg in reversed(page):",
+     "for msg in page:"),
 ]
 
 
