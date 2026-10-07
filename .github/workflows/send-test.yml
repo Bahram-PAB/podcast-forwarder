@@ -1,0 +1,75 @@
+name: send-test
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install telethon
+
+      # One real send to prove the whole path (min_id -> duration -> send_file).
+      # Pick the first >=15min audio among the newest 200 posts; if none exists,
+      # print nothing but "no candidate" — that is a normal result, not a failure.
+      - name: Send one long file
+        run: |
+          cat > /tmp/probe.py <<'PY'
+          import asyncio, os
+          from pathlib import Path
+          from telethon import TelegramClient
+          from telethon.sessions import StringSession
+          from telethon.tl.types import DocumentAttributeAudio
+
+          MIN = 900
+
+          def duration(m):
+              d = getattr(m, "audio", None) or getattr(m, "voice", None)
+              if d is None:
+                  return 0
+              for a in getattr(d, "attributes", None) or []:
+                  if isinstance(a, DocumentAttributeAudio):
+                      return a.duration or 0
+              return 0
+
+          async def go():
+              c = TelegramClient(StringSession(os.environ["TELEGRAM_SESSION"]),
+                                 int(os.environ["TELETHON_API_ID"]),
+                                 os.environ["TELETHON_API_HASH"])
+              await c.connect()
+              for line in Path("channels.txt").read_text(encoding="utf-8").splitlines():
+                  if not line.strip() or line.lstrip().startswith("#"):
+                      continue
+                  h, _, name = line.partition("|")
+                  h = h.strip().lstrip("@")
+                  name = name.strip() or h
+                  e = await c.get_entity(h)
+                  msgs = await c.get_messages(e, limit=200)
+                  hit = next((m for m in msgs if duration(m) >= MIN), None)
+                  if hit:
+                      print(f"candidate: {name} id={hit.id} {duration(hit)}s")
+                      await c.send_file(
+                          os.environ["TARGET_CHAT_ID"], hit.media,
+                          caption=f"{name}\n{duration(hit)//60} min test send")
+                      print("SENT OK:", hit.id)
+                      await c.disconnect()
+                      return
+                  print(f"{name}: no long file (max {max((duration(m) for m in msgs), default=0)}s)")
+              print("no candidate in any channel — send path untested this run")
+              await c.disconnect()
+
+          asyncio.run(go())
+          PY
+          python /tmp/probe.py
+        env:
+          TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+          TELETHON_API_ID: ${{ secrets.TELETHON_API_ID }}
+          TELETHON_API_HASH: ${{ secrets.TELETHON_API_HASH }}
+          TARGET_CHAT_ID: ${{ secrets.TARGET_CHAT_ID }}
