@@ -103,5 +103,32 @@ class TestState(unittest.TestCase):
         self.assertIn("channels", load_state())
 
 
+class TestRealTelethonSignatures(unittest.TestCase):
+    """Checks bot.py's calls against the installed Telethon, offline.
+
+    The loop body used a param name Telethon never had (id_lt, not min_id) and
+    the broad `except Exception` hid the TypeError on every run. Signature
+    drift has to fail here instead of silently doing nothing.
+    """
+
+    def test_kwargs_are_real_params(self):
+        """Every keyword bot.py passes to a TelegramClient method must exist."""
+        import inspect
+        import re
+        from pathlib import Path
+        from telethon import TelegramClient
+
+        src = (Path(__file__).parent / "bot.py").read_text(encoding="utf-8")
+        checked = 0
+        for method in ("get_messages", "send_file", "get_entity"):
+            params = set(inspect.signature(getattr(TelegramClient, method)).parameters)
+            for call in re.findall(rf"\.?{method}\((.*?)\n", src, re.S):
+                used = set(re.findall(r"\b(\w+)\s*=", call))
+                self.assertEqual(used - params, set(),
+                                 f"unknown kwargs for {method}()")
+                checked += 1
+        self.assertGreater(checked, 2, "no calls parsed — test is vacuous")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

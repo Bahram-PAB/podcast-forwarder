@@ -104,8 +104,8 @@ async def main():
 
         seen = state["channels"][handle]
         try:
-            # id_lt=seen returns exactly the unseen posts, newest first.
-            msgs = await client.get_messages(entity, limit=100, id_lt=seen)
+            # min_id=seen excludes that id and everything older: exactly the new posts.
+            msgs = await client.get_messages(entity, limit=100, min_id=seen)
             for msg in msgs:
                 media = long_media(msg)
                 if media is None:
