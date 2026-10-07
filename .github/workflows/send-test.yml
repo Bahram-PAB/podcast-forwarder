@@ -12,6 +12,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install telethon
+      - name: Offline tests first — the probe imports the same module
+        run: PYTHONPATH="$PWD" python test_bot.py
 
       # Uses bot.py's own resolve_target so the send path tested here is exactly
       # the one the cron workflow runs — a raw -100 id does not resolve on a cold
@@ -52,7 +54,7 @@ jobs:
 
           asyncio.run(go())
           PY
-          python /tmp/probe.py
+          PYTHONPATH="$PWD" python /tmp/probe.py
         env:
           TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
           TELETHON_API_ID: ${{ secrets.TELETHON_API_ID }}
