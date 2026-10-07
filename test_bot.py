@@ -92,12 +92,21 @@ class TestCaption(unittest.TestCase):
 
 
 class TestChannels(unittest.TestCase):
-    def test_parses_all_six_channels(self):
+    def test_every_listed_line_parses(self):
+        # نه به یک لیست hardcodeشده: کاربر هر وقت کانال اضافه/حذف کند این تست باید بماند.
+        from bot import load_channels
+        from pathlib import Path
+        got = dict(load_channels())
+        lines = [l.split("|")[0].strip().lstrip("@").strip()
+                 for l in open(Path("channels.txt"), encoding="utf-8")
+                 if l.strip() and not l.lstrip().startswith("#") and "|" in l]
+        self.assertEqual(sorted(got), sorted(lines))
+        self.assertGreater(len(got), 0)
+
+    def test_known_channel_still_present(self):
         from bot import load_channels
         got = dict(load_channels())
-        for handle in ("ahangify", "gooshvaaareh", "remixjavan_com",
-                       "Azerbaijan20", "melody9", "savadnameh"):
-            self.assertIn(handle, got)
+        self.assertIn("ahangify", got)
 
     def test_named_channel_keeps_its_name(self):
         from bot import load_channels

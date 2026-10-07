@@ -1,9 +1,10 @@
 name: forward
 on:
-  schedule:
-    # هر ۳۰ دقیقه. این فقط تعیین‌کنندهٔ تأخیر است: state.json جلوی تکرار را
-    # می‌گیرد و از دست رفتن پیام رخ نمی‌دهد، پس بازه را می‌توان درشت گرفت.
-    - cron: '*/30 * * * *'
+  # PAUSED 2026-10-07: سشن سوخته بود (AuthKeyDuplicatedError از دو ران همزمان) و
+  # هر ران کرون فقط شکست می‌خورد. برای فعال‌سازی دوباره، این بلوک را برگردانید:
+  #   schedule:
+  #     - cron: '*/30 * * * *'
+  # به‌شرط اینکه سکرت TELEGRAM_SESSION اول با سشن تازه عوض شده باشد.
   workflow_dispatch:
 # One Telegram session = one auth key = one IP. GitHub runners get random IPs,
 # so two overlapping runs would burn the session with AuthKeyDuplicatedError.
