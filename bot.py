@@ -10,6 +10,7 @@ from pathlib import Path
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 from telethon.sessions import StringSession
+from telethon.tl.types import DocumentAttributeAudio
 
 MIN_SECONDS = 900
 HERE = Path(__file__).resolve().parent
@@ -20,11 +21,23 @@ def fa_digits(value):
     return str(value).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
 
 
+def audio_duration(msg):
+    """Media duration in seconds, or 0. `msg.audio` is a bare Document — the
+    duration lives on its DocumentAttributeAudio, not on the Document itself."""
+    document = getattr(msg, "audio", None) or getattr(msg, "voice", None)
+    if document is None:
+        return 0
+    for attr in getattr(document, "attributes", None) or []:
+        if isinstance(attr, DocumentAttributeAudio):
+            return attr.duration or 0
+    return 0
+
+
 def long_media(msg):
     """audio = music/podcast file, voice = voice note; both carry duration."""
-    media = getattr(msg, "audio", None) or getattr(msg, "voice", None)
-    if media is not None and (media.duration or 0) >= MIN_SECONDS:
-        return media
+    document = getattr(msg, "audio", None) or getattr(msg, "voice", None)
+    if document is not None and audio_duration(msg) >= MIN_SECONDS:
+        return document
     return None
 
 
@@ -94,18 +107,22 @@ async def main():
             # id_lt=seen returns exactly the unseen posts, newest first.
             msgs = await client.get_messages(entity, limit=100, id_lt=seen)
             for msg in msgs:
-                state["channels"][handle] = min(state["channels"][handle], msg.id)
-
                 media = long_media(msg)
                 if media is None:
+                    # Nothing to send — safe to move the cursor past this post.
+                    state["channels"][handle] = min(state["channels"][handle], msg.id)
                     continue
                 # Sending the media reference copies server-side: no download,
                 # no 50 MB cap, and the session account must be in the group.
                 await client.send_file(
-                    target, msg.media, caption=format_caption(name, media.duration)
+                    target, msg.media,
+                    caption=format_caption(name, audio_duration(msg)),
                 )
+                # Cursor advances only after a confirmed send, so a failure
+                # retries this post on the next run instead of losing it.
+                state["channels"][handle] = min(state["channels"][handle], msg.id)
                 forwarded += 1
-                clock = format_caption("", media.duration).splitlines()[1]
+                clock = format_caption("", audio_duration(msg)).splitlines()[1]
                 print(f"✅ {name} — {clock}")
                 await asyncio.sleep(SEND_GAP)
 

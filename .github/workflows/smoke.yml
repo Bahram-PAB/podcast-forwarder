@@ -12,10 +12,13 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install telethon
-      - name: Check session + channels
+      - name: Unit tests
+        run: python test_bot.py
+      - name: Session + channel + duration check
         run: |
           python - <<'PY'
           import asyncio, os
+          from bot import audio_duration, long_media
           from telethon import TelegramClient
           from telethon.sessions import StringSession
 
@@ -29,12 +32,13 @@ jobs:
               print("account:", me.id, me.first_name)
               for h in ["ahangify","gooshvaaareh","remixjavan_com","Azerbaijan20","melody9","savadnameh"]:
                   try:
-                      m = await c.get_messages(h, limit=3)
+                      m = await c.get_messages(h, limit=5)
                       print(f"{h}: {len(m)} msg, newest id={m[0].id if m else None}")
                       for x in m:
-                          au = getattr(x,'audio',None) or getattr(x,'voice',None)
-                          if au and (au.duration or 0) >= 900:
-                              print(f"   -> LONG {au.duration//60}:{au.duration%60:02d} id={x.id}")
+                          d = audio_duration(x)
+                          hit = long_media(x)
+                          if d:
+                              print(f"   -> media {d//60}:{d%60:02d} id={x.id} forward={hit is not None}")
                   except Exception as e:
                       print(f"{h}: ERR {type(e).__name__}: {e}")
               await c.disconnect()

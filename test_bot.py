@@ -1,34 +1,72 @@
 """Offline checks for the forwarder — no network, no secrets.
 
 Run: python test_bot.py
+
+The fakes below mirror the real Telethon shapes on purpose: msg.audio is a bare
+Document whose duration lives on DocumentAttributeAudio. A plain object with a
+.duration attribute would let the original crash bug pass.
 """
 import unittest
 
+from telethon.tl.types import (
+    Document,
+    DocumentAttributeAudio,
+    MessageMediaDocument,
+)
 
-class FakeMedia:
-    def __init__(self, duration):
-        self.duration = duration
+
+def fake_audio_doc(duration, voice=False):
+    return Document(
+        id=1, access_hash=2, file_reference=b"", date=None,
+        mime_type="audio/ogg", size=1000, dc_id=4,
+        attributes=[DocumentAttributeAudio(
+            duration=duration, voice=voice, title="t",
+            performer=None, waveform=b"\x00")],
+    )
 
 
 class FakeMsg:
-    def __init__(self, msg_id, audio=None, voice=None):
+    def __init__(self, msg_id, media=None):
         self.id = msg_id
-        self.audio = audio
-        self.voice = voice
+        self.media = media
+        self.audio = media if (media and not getattr(media, "voice", False)) else None
+        self.voice = media if (media and getattr(media, "voice", False)) else None
+
+
+class TestAudioDuration(unittest.TestCase):
+    def test_duration_read_from_attribute_not_document(self):
+        """Regression: Document has no .duration — reading it raised."""
+        from bot import audio_duration
+        self.assertEqual(audio_duration(FakeMsg(1, fake_audio_doc(1200))), 1200)
+        self.assertFalse(hasattr(fake_audio_doc(1200), "duration"),
+                         "fake must not expose .duration or the test is vacuous")
+
+    def test_voice_note_duration(self):
+        from bot import audio_duration
+        self.assertEqual(
+            audio_duration(FakeMsg(1, fake_audio_doc(1800, voice=True))), 1800)
+
+    def test_no_media_and_unexpected_attributes(self):
+        from bot import audio_duration
+        self.assertEqual(audio_duration(FakeMsg(1)), 0)
+        bare = Document(id=1, access_hash=2, file_reference=b"", date=None,
+                        mime_type="application/pdf", size=10, dc_id=4, attributes=[])
+        self.assertEqual(audio_duration(FakeMsg(1, bare)), 0)
 
 
 class TestFilter(unittest.TestCase):
     def test_boundary_is_15_minutes(self):
         from bot import long_media
-        self.assertIsNone(long_media(FakeMsg(1, audio=FakeMedia(899))), "14:59 skipped")
-        self.assertIsNotNone(long_media(FakeMsg(1, audio=FakeMedia(900))), "15:00 forwarded")
-        self.assertIsNotNone(long_media(FakeMsg(1, voice=FakeMedia(5400))), "90:00 forwarded")
+        self.assertIsNone(long_media(FakeMsg(1, fake_audio_doc(899))), "14:59 skipped")
+        self.assertIsNotNone(long_media(FakeMsg(1, fake_audio_doc(900))), "15:00 forwarded")
+        self.assertIsNotNone(
+            long_media(FakeMsg(1, fake_audio_doc(5400, voice=True))), "90:00 voice")
 
     def test_ignores_text_and_short(self):
         from bot import long_media
         self.assertIsNone(long_media(FakeMsg(1)), "text message")
-        self.assertIsNone(long_media(FakeMsg(1, voice=FakeMedia(10))), "short voice note")
-        self.assertIsNone(long_media(FakeMsg(1, audio=FakeMedia(0))), "missing duration")
+        self.assertIsNone(long_media(FakeMsg(1, fake_audio_doc(10))), "short voice note")
+        self.assertIsNone(long_media(FakeMsg(1, fake_audio_doc(0))), "zero duration")
 
 
 class TestCaption(unittest.TestCase):
