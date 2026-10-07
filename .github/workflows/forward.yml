@@ -18,7 +18,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install deps
-        run: pip install telethon requests
+        run: pip install telethon
 
       - name: Run forwarder
         run: python bot.py
