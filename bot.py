@@ -123,6 +123,10 @@ async def main():
             failed += 1
             continue
 
+        if name.startswith("@"):
+            # No display name in channels.txt — ask Telegram for the real title.
+            name = getattr(entity, "title", None) or name
+
         if handle not in state["channels"]:
             # First sight of this channel: baseline only, older posts are not wanted.
             newest = await client.get_messages(entity, limit=1)

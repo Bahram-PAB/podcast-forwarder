@@ -102,6 +102,17 @@ class TestChannels(unittest.TestCase):
         from bot import load_channels
         self.assertEqual(load_channels()[0][1], "آهنگیفای")
 
+    def test_blank_name_falls_back_to_the_handle(self):
+        from bot import load_channels
+        got = {h: n for h, n in load_channels()}
+        self.assertEqual(got["ahangify"], "آهنگیفای")
+        # A blank display name yields the @handle, which is the cue for bot.py
+        # to ask Telegram for the real title.
+        for handle, name in load_channels():
+            self.assertTrue(name, f"{handle} has no fallback name")
+        self.assertTrue(any(n.startswith("@") for _, n in load_channels()),
+                        "expected at least one channel using the @handle fallback")
+
 
 class TestState(unittest.TestCase):
     def test_missing_state_starts_empty(self):

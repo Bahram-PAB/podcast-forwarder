@@ -1,5 +1,5 @@
 # هر کانال: @handle | نام نمایشی
-# ربات باید در هر کدام به‌عنوان ادمین اضافه شود (تلگرام هیچ API برای عضو کردن خودکار ندارد).
+# نام نمایشی فقط برای کپشن است؛ اگر خالی باشد خود @handle استفاده می‌شود.
 
 @ahangify | آهنگیفای
 @gooshvaaareh | گوش‌واره
@@ -7,3 +7,13 @@
 @Azerbaijan20 | آذربایجان موسیقی سی
 @melody9 | ملودی
 @savadnameh | سجاد‌نامه
+@kuchebazariha | کوچه بازاری ها
+@musicir | بانک موزیک
+@SamFoni | نوستالژی
+@bir3da | بیرصدا
+@Ritmg | کانال ریمیکس
+@birmusicOfficial | بیرموزیک
+@M0_ZK | موزیکفا
+@icyRemix |
+@AHANGAWMEH |
+@flowwithmusic |
