@@ -7,6 +7,7 @@ Document whose duration lives on DocumentAttributeAudio. A plain object with a
 .duration attribute would let the original crash bug pass.
 """
 import inspect
+import json
 import unittest
 
 from telethon import utils
@@ -18,7 +19,7 @@ from telethon.tl.types import (
     PeerChat,
 )
 
-from bot import resolve_target
+from bot import already_sent, load_channels, media_key, remember_sent, resolve_target
 
 
 def fake_audio_doc(duration, voice=False):
@@ -176,6 +177,50 @@ class TestBackfillPaging(unittest.TestCase):
         cursor, page_oldest_newest_id = 100, 40
         stuck = page_oldest_newest_id >= cursor and bool(cursor)
         self.assertFalse(stuck)
+
+
+class TestDedupe(unittest.TestCase):
+    """A file must never reach the target channel twice.
+
+    state.json only stores a cursor, so the cron path cannot tell "already
+    forwarded" from "new" — a retried run would repost. The sent-keys table is
+    what makes replays idempotent.
+    """
+
+    def test_first_send_is_not_deduped(self):
+        state = {}
+        self.assertFalse(already_sent(state, "melody9#42"))
+
+    def test_same_key_is_deduped_after_a_send(self):
+        state = {}
+        remember_sent(state, "melody9#42")
+        self.assertTrue(already_sent(state, "melody9#42"))
+
+    def test_different_message_is_not_deduped(self):
+        state = {}
+        remember_sent(state, "melody9#42")
+        self.assertFalse(already_sent(state, "melody9#43"))
+
+    def test_same_id_in_a_different_channel_is_a_different_source(self):
+        state = {}
+        remember_sent(state, "melody9#42")
+        self.assertFalse(already_sent(state, "icyRemix#42"))
+
+    def test_missing_sent_table_defaults_to_empty(self):
+        # Old state.json files predate the dedup table; must not KeyError.
+        state = load_state() if False else {"channels": {}}
+        self.assertFalse(already_sent(state, "melody9#42"))
+        self.assertEqual(state["sent"], {})
+
+    def test_key_is_handle_plus_id(self):
+        msg = type("M", (), {"id": 3})()  # media_key only reads .id
+        self.assertEqual(media_key("icyRemix", msg), "icyRemix#3")
+
+    def test_dedupe_survives_a_round_trip_through_state(self):
+        state = {"channels": {}}
+        remember_sent(state, "melody9#42")
+        reloaded = json.loads(json.dumps(state))
+        self.assertTrue(already_sent(reloaded, "melody9#42"))
 
 
 class TestResolveTarget(unittest.TestCase):

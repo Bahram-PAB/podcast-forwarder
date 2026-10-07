@@ -4,12 +4,12 @@ on:
     inputs:
       limit:
         description: 'Long files to forward per channel (oldest first)'
-        default: '15'
+        default: '6'
 
 jobs:
   fill:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 55
     permissions:
       contents: write
     steps:
@@ -22,6 +22,8 @@ jobs:
       - name: Offline tests
         run: PYTHONPATH="$PWD" python test_bot.py
 
+      # BACKFILL_LIMIT is per channel; keep it low so the job cannot hit
+      # the runner timeout on 17 channels (the old 90 min run was cancelled).
       # BACKFILL=1 forwards historical long files; the cursor in state.json is
       # untouched, so the 30-minute cron still only handles new posts.
       - name: Forward historical long files

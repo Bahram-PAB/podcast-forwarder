@@ -93,6 +93,30 @@ def load_state():
         return {"channels": {}}
 
 
+def already_sent(state, key):
+    """Dedup guard: has this exact file been forwarded before?
+
+    Keyed on channel handle + message id, so a re-run, a retried send, or a
+    manual replay cannot double-post the same file. The cursor alone cannot do
+    this: a replay of an already-forwarded range would look brand new.
+    """
+    sent = state.setdefault("sent", {})
+    return key in sent
+
+
+def remember_sent(state, key):
+    state.setdefault("sent", {})[key] = 1
+
+
+def media_key(handle, msg):
+    """Stable identity for one piece of media.
+
+    handle + message id: the same song reposted into another channel has a
+    different handle, and each channel is a separate source to watch.
+    """
+    return f"{handle}#{msg.id}"
+
+
 async def main():
     session = os.environ.get("TELEGRAM_SESSION", "")
     api_id = os.environ.get("TELETHON_API_ID", "")
@@ -163,10 +187,15 @@ async def main():
                 for msg in reversed(page):
                     if long_media(msg) is None:
                         continue
+                    key = media_key(handle, msg)
+                    if already_sent(state, key):
+                        # Already in the target channel: skip, but keep walking.
+                        continue
                     await client.send_file(
                         target, msg.media,
                         caption=format_caption(name, audio_duration(msg)),
                     )
+                    remember_sent(state, key)
                     sent += 1
                     clock = format_caption("", audio_duration(msg)).splitlines()[1]
                     print(f"⬅️ {name} — {clock} (id={msg.id})")
@@ -186,12 +215,18 @@ async def main():
                     # Nothing to send — safe to move the cursor past this post.
                     state["channels"][handle] = min(state["channels"][handle], msg.id)
                     continue
+                if already_sent(state, media_key(handle, msg)):
+                    # Replay of an already-forwarded file: no second send, but the
+                    # cursor still advances so this range is not re-read.
+                    state["channels"][handle] = min(state["channels"][handle], msg.id)
+                    continue
                 # Sending the media reference copies server-side: no download,
                 # no 50 MB cap, and the session account must be in the group.
                 await client.send_file(
                     target, msg.media,
                     caption=format_caption(name, audio_duration(msg)),
                 )
+                remember_sent(state, media_key(handle, msg))
                 # Cursor advances only after a confirmed send, so a failure
                 # retries this post on the next run instead of losing it.
                 state["channels"][handle] = min(state["channels"][handle], msg.id)
