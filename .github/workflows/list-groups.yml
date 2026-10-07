@@ -13,12 +13,16 @@ jobs:
           python-version: '3.12'
       - run: pip install telethon
 
-      - name: Direct membership query
+      # A StringSession carries only the auth key — no entity cache. So a chat
+      # the account belongs to can still fail get_input_entity(id) on a cold
+      # client. Scanning dialogs forces the cache to fill, then the id resolves.
+      - name: Scan dialogs then resolve target
         run: |
           cat > /tmp/probe.py <<'PY'
           import asyncio, os
           from telethon import TelegramClient
           from telethon.sessions import StringSession
+          from telethon.tl.types import Channel, Chat
 
           async def go():
               c = TelegramClient(StringSession(os.environ["TELEGRAM_SESSION"]),
@@ -26,17 +30,56 @@ jobs:
                                  os.environ["TELETHON_API_HASH"])
               await c.connect()
               raw = (os.environ.get("TARGET_CHAT_ID") or "").strip()
+
+              before = None
+              try:
+                  await c.get_input_entity(raw)
+                  before = "resolved"
+              except Exception as ex:
+                  before = f"{type(ex).__name__}"
+              print(f"before dialog scan: {before}")
+
+              found = None
+              total = 0
+              async for d in c.iter_dialogs():
+                  e = d.entity
+                  if isinstance(e, Chat):
+                      pid = -e.id
+                  elif isinstance(e, Channel):
+                      pid = -1000000000000 - e.id if e.megagroup else None
+                  else:
+                      continue
+                  total += 1
+                  if str(pid) == raw or str(e.id) == raw.lstrip("-").lstrip("100"):
+                      found = e
+              print(f"scanned {total} groups")
+
+              if found is None:
+                  print(f"VERDICT: {raw} not among dialogs -> wrong id or not a member")
+                  await c.disconnect()
+                  return
+
+              print(f"VERDICT: found {found.title!r} "
+                    f"(id={found.id}, megagroup={getattr(found, 'megagroup', None)}, "
+                    f"broadcast={getattr(found, 'broadcast', None)})")
+
+              # Now that the cache is warm, retry the plain id.
               try:
                   inp = await c.get_input_entity(raw)
-                  print(f"get_input_entity OK -> {inp.__class__.__name__}")
-                  # Now try to actually read a message from it.
-                  msgs = await c.get_messages(inp, limit=3)
-                  print(f"read {len(msgs)} message(s) from target")
-                  for m in msgs:
-                      print(f"  id={m.id} date={m.date} text={m.text[:40]!r}")
+                  print(f"after scan, raw id resolves: {inp.__class__.__name__}")
               except Exception as ex:
-                  print(f"FAIL: {type(ex).__name__}: {ex}")
-                  print("  -> this account cannot see that chat at all")
+                  print(f"after scan, raw id still fails: {type(ex).__name__}: {ex}")
+                  try:
+                      inp = await c.get_input_entity(found)
+                      print(f"  but the ENTITY OBJECT resolves: {inp.__class__.__name__}")
+                      print("  -> bot.py must pass the entity, not the raw id")
+                  except Exception as ex2:
+                      print(f"  entity object also fails: {type(ex2).__name__}: {ex2}")
+
+              msgs = await c.get_messages(found, limit=5)
+              print(f"read {len(msgs)} message(s)")
+              for m in msgs:
+                  print(f"  id={m.id} date={m.date} text={(m.text or '')[:50]!r}")
               await c.disconnect()
 
           asyncio.run(go())
