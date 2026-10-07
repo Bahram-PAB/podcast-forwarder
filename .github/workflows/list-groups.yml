@@ -13,7 +13,7 @@ jobs:
           python-version: '3.12'
       - run: pip install telethon
 
-      - name: List group chats and test the configured target
+      - name: Diagnose the target chat
         run: |
           cat > /tmp/probe.py <<'PY'
           import asyncio, os
@@ -26,35 +26,39 @@ jobs:
                                  int(os.environ["TELETHON_API_ID"]),
                                  os.environ["TELETHON_API_HASH"])
               await c.connect()
-              if not await c.is_user_authorized():
-                  print("session not authorized")
-                  return
+              raw = int((os.environ.get("TARGET_CHAT_ID") or "0").strip())
 
-              target = (os.environ.get("TARGET_CHAT_ID") or "").strip()
-              # Report only the shape — never the value itself.
-              print(f"TARGET_CHAT_ID len={len(target)} "
-                    f"numeric={target.lstrip('-').isdigit()} "
-                    f"starts_with_at={target.startswith('@')} "
-                    f"is_invite_link={'t.me/+' in target or 'joinchat' in target}")
-
-              groups = []
+              found = None
+              total = 0
               async for d in c.iter_dialogs():
-                  ent = d.entity
-                  if isinstance(ent, Chat):
-                      groups.append((f"-{ent.id}", d.name, "basic group"))
-                  elif isinstance(ent, Channel) and ent.megagroup:
-                      groups.append((f"-100{ent.id}", d.name, "supergroup"))
+                  e = d.entity
+                  pid = None
+                  if isinstance(e, Chat):
+                      pid = -e.id
+                  elif isinstance(e, Channel):
+                      pid = -1000000000000 - e.id if e.megagroup else None
+                  if pid is None:
+                      continue
+                  total += 1
+                  if pid == raw:
+                      found = e
+                  # Also match the bare channel id, in case the user gave the
+                  # -100 form for what is actually a basic group.
+                  if isinstance(e, Channel) and e.id == abs(raw):
+                      found = e
 
-              print(f"\n{len(groups)} group(s) visible to the account:")
-              for gid, title, kind in groups:
-                  print(f"  {gid}  {title}  [{kind}]")
-
-              if target:
+              print(f"scanned dialogs, {total} groups/channels")
+              if found is None:
+                  print(f"VERDICT: account is NOT a member of {raw}")
+                  print("        either the id is wrong or the account has not joined")
+              else:
+                  print(f"VERDICT: member of -> {found.title!r} "
+                        f"(id={found.id}, megagroup={getattr(found,'megagroup',None)})")
                   try:
-                      e = await c.get_input_entity(target)
-                      print(f"\nTARGET_CHAT_ID resolves -> {e.__class__.__name__}")
+                      inp = await c.get_input_entity(found)
+                      print(f"        resolves via entity object: {inp.__class__.__name__}")
                   except Exception as ex:
-                      print(f"\nTARGET_CHAT_ID does NOT resolve: {type(ex).__name__}: {ex}")
+                      print(f"        resolve FAILED: {type(ex).__name__}: {ex}")
               await c.disconnect()
 
           asyncio.run(go())
