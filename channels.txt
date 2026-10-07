@@ -2,11 +2,9 @@
 # نام نمایشی فقط برای کپشن است؛ اگر خالی باشد خود @handle استفاده می‌شود.
 
 @ahangify | آهنگیفای
-@gooshvaaareh | گوش‌واره
 @remixjavan_com | ریمیکس جوان
 @Azerbaijan20 | آذربایجان موسیقی سی
 @melody9 | ملودی
-@savadnameh | سجاد‌نامه
 @kuchebazariha | کوچه بازاری ها
 @musicir | بانک موزیک
 @SamFoni | نوستالژی
@@ -14,7 +12,7 @@
 @Ritmg | کانال ریمیکس
 @birmusicOfficial | بیرموزیک
 @M0_ZK | موزیکفا
-@icyRemix |
+@icyRemix | آیسی ریمیکس
 @AHANGAWMEH |
 @flowwithmusic |
-@Herochnl |
+@Herochnl |هیرو 
