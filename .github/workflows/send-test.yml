@@ -2,13 +2,10 @@ name: send-test
 on:
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,53 +13,41 @@ jobs:
           python-version: '3.12'
       - run: pip install telethon
 
-      # One real send to prove the whole path (min_id -> duration -> send_file).
-      # Pick the first >=15min audio among the newest 200 posts; if none exists,
-      # print nothing but "no candidate" — that is a normal result, not a failure.
-      - name: Send one long file
+      # Uses bot.py's own resolve_target so the send path tested here is exactly
+      # the one the cron workflow runs — a raw -100 id does not resolve on a cold
+      # StringSession client, which is what this test originally tripped over.
+      - name: Send one long file to the target
         run: |
           cat > /tmp/probe.py <<'PY'
           import asyncio, os
           from pathlib import Path
           from telethon import TelegramClient
           from telethon.sessions import StringSession
-          from telethon.tl.types import DocumentAttributeAudio
+          from bot import audio_duration, format_caption, load_channels, long_media, resolve_target
 
           MIN = 900
-
-          def duration(m):
-              d = getattr(m, "audio", None) or getattr(m, "voice", None)
-              if d is None:
-                  return 0
-              for a in getattr(d, "attributes", None) or []:
-                  if isinstance(a, DocumentAttributeAudio):
-                      return a.duration or 0
-              return 0
 
           async def go():
               c = TelegramClient(StringSession(os.environ["TELEGRAM_SESSION"]),
                                  int(os.environ["TELETHON_API_ID"]),
                                  os.environ["TELETHON_API_HASH"])
               await c.connect()
-              for line in Path("channels.txt").read_text(encoding="utf-8").splitlines():
-                  if not line.strip() or line.lstrip().startswith("#"):
-                      continue
-                  h, _, name = line.partition("|")
-                  h = h.strip().lstrip("@")
-                  name = name.strip() or h
-                  e = await c.get_entity(h)
-                  msgs = await c.get_messages(e, limit=200)
-                  hit = next((m for m in msgs if duration(m) >= MIN), None)
+              target = await resolve_target(c, os.environ["TARGET_CHAT_ID"])
+              print(f"target ready: {target.title!r}")
+              for handle, name in load_channels():
+                  e = await c.get_entity(handle)
+                  hit = next((m for m in await c.get_messages(e, limit=200)
+                              if audio_duration(m) >= MIN), None)
                   if hit:
-                      print(f"candidate: {name} id={hit.id} {duration(hit)}s")
-                      await c.send_file(
-                          os.environ["TARGET_CHAT_ID"], hit.media,
-                          caption=f"{name}\n{duration(hit)//60} min test send")
-                      print("SENT OK:", hit.id)
+                      sent = await c.send_file(
+                          target, hit.media,
+                          caption=format_caption(name, audio_duration(hit)))
+                      print(f"candidate: {name} id={hit.id} {audio_duration(hit)}s")
+                      print(f"SENT OK -> message {sent.id}")
                       await c.disconnect()
                       return
-                  print(f"{name}: no long file (max {max((duration(m) for m in msgs), default=0)}s)")
-              print("no candidate in any channel — send path untested this run")
+                  print(f"no long file in {name}")
+              print("nothing over threshold to test with")
               await c.disconnect()
 
           asyncio.run(go())
