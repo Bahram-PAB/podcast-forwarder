@@ -20,9 +20,9 @@ jobs:
         run: |
           cat > /tmp/probe.py <<'PY'
           import asyncio, os
-          from telethon import TelegramClient
+          from telethon import TelegramClient, utils
           from telethon.sessions import StringSession
-          from telethon.tl.types import Channel, Chat
+          from telethon.tl.types import Channel, Chat, PeerChannel
 
           async def go():
               c = TelegramClient(StringSession(os.environ["TELEGRAM_SESSION"]),
@@ -46,7 +46,9 @@ jobs:
                   if isinstance(e, Chat):
                       pid = -e.id
                   elif isinstance(e, Channel):
-                      pid = -1000000000000 - e.id if e.megagroup else None
+                      # Broadcast channels are legit targets too — the earlier
+                      # probe filtered megagroup-only and silently dropped them.
+                      pid = utils.get_peer_id(PeerChannel(e.id))
                   else:
                       continue
                   total += 1
