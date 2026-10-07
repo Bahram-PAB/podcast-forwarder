@@ -20,6 +20,7 @@ from telethon.tl.types import (
 )
 
 from bot import already_sent, load_channels, media_key, remember_sent, resolve_target
+import bot
 
 
 def fake_audio_doc(duration, voice=False):
@@ -230,6 +231,34 @@ class TestDedupe(unittest.TestCase):
         remember_sent(state, "melody9#42")
         reloaded = json.loads(json.dumps(state))
         self.assertTrue(already_sent(reloaded, "melody9#42"))
+
+
+class TestCursor(unittest.TestCase):
+    """The cursor is the highest id already handled — it must move UP.
+
+    min() pinned it at the baseline for every channel: `state unchanged` on
+    every run, and once a channel passed 100 posts between runs the oldest
+    unhandled ones fell outside the window and were lost for good.
+    """
+
+    def test_new_posts_raise_the_cursor(self):
+        # A post newer than the cursor has a bigger id; keeping it must raise.
+        cursor, msg_id = 110347, 110356
+        self.assertEqual(max(cursor, msg_id), 110356)
+        # min() is the bug: it returns the stale cursor and never advances.
+        self.assertEqual(min(cursor, msg_id), 110347)
+
+    def test_cron_loop_never_uses_min_on_the_cursor(self):
+        src = inspect.getsource(bot)
+        body = src[src.index("async def main"):]
+        self.assertNotIn('min(state["channels"][handle]', body)
+        # All three cursor writes (skip, dedupe, send) must use max().
+        self.assertEqual(body.count('max(state["channels"][handle]'), 3)
+
+    def test_walks_oldest_first_so_a_failed_send_stops_the_cursor(self):
+        # reversed() keeps ascending id order, so a failure leaves the cursor
+        # on the last post that actually made it instead of skipping past it.
+        self.assertIn("for msg in reversed(msgs)", inspect.getsource(bot))
 
 
 class TestResolveTarget(unittest.TestCase):

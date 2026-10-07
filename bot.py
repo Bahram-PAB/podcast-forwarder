@@ -209,16 +209,19 @@ async def main():
         try:
             # min_id=seen excludes that id and everything older: exactly the new posts.
             msgs = await client.get_messages(entity, limit=100, min_id=seen)
-            for msg in msgs:
+            # Oldest first, so the cursor never jumps past a post that then fails
+            # to send — min() pinned it at the baseline and dropped anything past
+            # the 100-message window.
+            for msg in reversed(msgs):
                 media = long_media(msg)
                 if media is None:
                     # Nothing to send — safe to move the cursor past this post.
-                    state["channels"][handle] = min(state["channels"][handle], msg.id)
+                    state["channels"][handle] = max(state["channels"][handle], msg.id)
                     continue
                 if already_sent(state, media_key(handle, msg)):
                     # Replay of an already-forwarded file: no second send, but the
                     # cursor still advances so this range is not re-read.
-                    state["channels"][handle] = min(state["channels"][handle], msg.id)
+                    state["channels"][handle] = max(state["channels"][handle], msg.id)
                     continue
                 # Sending the media reference copies server-side: no download,
                 # no 50 MB cap, and the session account must be in the group.
@@ -229,7 +232,7 @@ async def main():
                 remember_sent(state, media_key(handle, msg))
                 # Cursor advances only after a confirmed send, so a failure
                 # retries this post on the next run instead of losing it.
-                state["channels"][handle] = min(state["channels"][handle], msg.id)
+                state["channels"][handle] = max(state["channels"][handle], msg.id)
                 forwarded += 1
                 clock = format_caption("", audio_duration(msg)).splitlines()[1]
                 print(f"✅ {name} — {clock}")
