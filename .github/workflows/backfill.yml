@@ -5,6 +5,12 @@ on:
       limit:
         description: 'Long files to forward per channel (oldest first)'
         default: '6'
+# One Telegram session = one auth key = one IP. GitHub runners get random IPs,
+# so two overlapping runs would burn the session with AuthKeyDuplicatedError.
+concurrency:
+  group: telegram-session
+  cancel-in-progress: false
+
 
 jobs:
   fill:

@@ -1,6 +1,12 @@
 name: whoami
 on:
   workflow_dispatch:
+# One Telegram session = one auth key = one IP. GitHub runners get random IPs,
+# so two overlapping runs would burn the session with AuthKeyDuplicatedError.
+concurrency:
+  group: telegram-session
+  cancel-in-progress: false
+
 
 jobs:
   who:

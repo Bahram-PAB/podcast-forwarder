@@ -5,6 +5,12 @@ on:
     # می‌گیرد و از دست رفتن پیام رخ نمی‌دهد، پس بازه را می‌توان درشت گرفت.
     - cron: '*/30 * * * *'
   workflow_dispatch:
+# One Telegram session = one auth key = one IP. GitHub runners get random IPs,
+# so two overlapping runs would burn the session with AuthKeyDuplicatedError.
+concurrency:
+  group: telegram-session
+  cancel-in-progress: false
+
 
 jobs:
   run:
