@@ -1,0 +1,44 @@
+name: backfill
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Long files to forward per channel (oldest first)'
+        default: '15'
+
+jobs:
+  fill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install telethon
+
+      - name: Offline tests
+        run: PYTHONPATH="$PWD" python test_bot.py
+
+      # BACKFILL=1 forwards historical long files; the cursor in state.json is
+      # untouched, so the 30-minute cron still only handles new posts.
+      - name: Forward historical long files
+        run: PYTHONPATH="$PWD" python bot.py
+        env:
+          BACKFILL: '1'
+          BACKFILL_LIMIT: ${{ inputs.limit }}
+          TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+          TELETHON_API_ID: ${{ secrets.TELETHON_API_ID }}
+          TELETHON_API_HASH: ${{ secrets.TELETHON_API_HASH }}
+          TARGET_CHAT_ID: ${{ secrets.TARGET_CHAT_ID }}
+
+      - name: Commit state
+        if: always()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add state.json
+          git diff --staged --quiet || git commit -m "chore: state after backfill"
+          git push "https://Bahram-PAB:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:main

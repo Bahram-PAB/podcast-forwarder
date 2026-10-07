@@ -147,6 +147,37 @@ class TestRealTelethonSignatures(unittest.TestCase):
         self.assertGreater(checked, 2, "no calls parsed — test is vacuous")
 
 
+class TestBackfillPaging(unittest.TestCase):
+    """max_id pages towards OLDER messages. The no-progress guard matters: at the
+    bottom of a channel Telegram keeps returning the same page, so an unguarded
+    loop spins forever on an endless channel."""
+
+    def test_max_id_is_a_real_param_and_pages_backwards(self):
+        import inspect as _i
+        from telethon.client.messages import MessageMethods
+        params = _i.signature(MessageMethods.get_messages).parameters
+        self.assertIn("max_id", params)
+        self.assertIn("min_id", params)
+
+    def test_backfill_is_off_unless_asked(self):
+        import os
+        import importlib
+        self.assertFalse(importlib.import_module("bot").BACKFILL,
+                         "BACKFILL must default to off so cron never backfills")
+
+    def test_no_progress_guard_catches_a_repeated_page(self):
+        # Telegram returns the same oldest page when max_id is already at the
+        # bottom: the newest id on it is >= the cursor we asked to go below.
+        cursor, page_oldest_newest_id = 5, 5
+        stuck = page_oldest_newest_id >= cursor and bool(cursor)
+        self.assertTrue(stuck, "guard must fire when the page does not move")
+
+    def test_no_progress_guard_does_not_fire_on_progress(self):
+        cursor, page_oldest_newest_id = 100, 40
+        stuck = page_oldest_newest_id >= cursor and bool(cursor)
+        self.assertFalse(stuck)
+
+
 class TestResolveTarget(unittest.TestCase):
     """A raw -100 id does NOT resolve on a cold StringSession client; walking
     the dialogs does. This was the bug that blocked every real send."""

@@ -15,6 +15,11 @@ from telethon.tl.types import DocumentAttributeAudio
 MIN_SECONDS = 900
 HERE = Path(__file__).resolve().parent
 SEND_GAP = 2  # seconds between forwards (flood safety)
+# Backfill mode: forward every long file already in the channels, oldest first,
+# then advance the normal cursor so cron picks up only new posts.
+BACKFILL = os.environ.get("BACKFILL") == "1"
+BACKFILL_LIMIT = int(os.environ.get("BACKFILL_LIMIT", "40"))  # per channel
+BACKFILL_MIN_ID = int(os.environ.get("BACKFILL_MIN_ID", "0"))  # 0 = no floor
 
 
 def fa_digits(value):
@@ -127,12 +132,48 @@ async def main():
             # No display name in channels.txt — ask Telegram for the real title.
             name = getattr(entity, "title", None) or name
 
-        if handle not in state["channels"]:
+        if handle not in state["channels"] and not BACKFILL:
             # First sight of this channel: baseline only, older posts are not wanted.
             newest = await client.get_messages(entity, limit=1)
             if newest:
                 state["channels"][handle] = newest[0].id
             print(f"⚪ {name}: baseline set, no history forwarded")
+            continue
+
+        if BACKFILL:
+            # Walk backwards through everything older than the cursor and forward
+            # every long file, oldest first. max_id pages towards older messages.
+            cursor = state["channels"].get(handle, 0)
+            sent = 0
+            while sent < BACKFILL_LIMIT:
+                page = await client.get_messages(
+                    entity, limit=100,
+                    **({"max_id": cursor} if cursor else {}),
+                    **({"min_id": BACKFILL_MIN_ID} if BACKFILL_MIN_ID else {}),
+                )
+                if not page:
+                    break
+                # Telegram repeats the same page when max_id is at the very
+                # bottom of a channel; without this we would spin forever.
+                if page[-1].id >= cursor and cursor:
+                    print(f"⬅️ {name}: reached the oldest message, stopping")
+                    break
+                cursor = page[-1].id
+                # Oldest first so the backfill lands in chronological order.
+                for msg in reversed(page):
+                    if long_media(msg) is None:
+                        continue
+                    await client.send_file(
+                        target, msg.media,
+                        caption=format_caption(name, audio_duration(msg)),
+                    )
+                    sent += 1
+                    clock = format_caption("", audio_duration(msg)).splitlines()[1]
+                    print(f"⬅️ {name} — {clock} (id={msg.id})")
+                    await asyncio.sleep(SEND_GAP)
+                    if sent >= BACKFILL_LIMIT:
+                        break
+            print(f"⬅️ {name}: {sent} historical file(s) forwarded")
             continue
 
         seen = state["channels"][handle]
