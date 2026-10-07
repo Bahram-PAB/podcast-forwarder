@@ -171,42 +171,50 @@ async def main():
         if BACKFILL:
             # Walk backwards through everything older than the cursor and forward
             # every long file, oldest first. max_id pages towards older messages.
-            cursor = state["channels"].get(handle, 0)
-            sent = 0
-            while sent < BACKFILL_LIMIT:
-                page = await client.get_messages(
-                    entity, limit=100,
-                    **({"max_id": cursor} if cursor else {}),
-                    **({"min_id": BACKFILL_MIN_ID} if BACKFILL_MIN_ID else {}),
-                )
-                if not page:
-                    break
-                # Telegram repeats the same page when max_id is at the very
-                # bottom of a channel; without this we would spin forever.
-                if page[-1].id >= cursor and cursor:
-                    print(f"⬅️ {name}: reached the oldest message, stopping")
-                    break
-                cursor = page[-1].id
-                # Oldest first so the backfill lands in chronological order.
-                for msg in reversed(page):
-                    if long_media(msg) is None:
-                        continue
-                    key = media_key(handle, msg)
-                    if already_sent(state, key):
-                        # Already in the target channel: skip, but keep walking.
-                        continue
-                    await client.send_file(
-                        target, msg.media,
-                        caption=format_caption(name, audio_duration(msg)),
+            try:
+                cursor = state["channels"].get(handle, 0)
+                sent = 0
+                while sent < BACKFILL_LIMIT:
+                    page = await client.get_messages(
+                        entity, limit=100,
+                        **({"max_id": cursor} if cursor else {}),
+                        **({"min_id": BACKFILL_MIN_ID} if BACKFILL_MIN_ID else {}),
                     )
-                    remember_sent(state, key)
-                    sent += 1
-                    clock = format_caption("", audio_duration(msg)).splitlines()[1]
-                    print(f"⬅️ {name} — {clock} (id={msg.id})")
-                    await asyncio.sleep(SEND_GAP)
-                    if sent >= BACKFILL_LIMIT:
+                    if not page:
                         break
-            print(f"⬅️ {name}: {sent} historical file(s) forwarded")
+                    # Telegram repeats the same page when max_id is at the very
+                    # bottom of a channel; without this we would spin forever.
+                    if page[-1].id >= cursor and cursor:
+                        print(f"⬅️ {name}: reached the oldest message, stopping")
+                        break
+                    cursor = page[-1].id
+                    # Oldest first so the backfill lands in chronological order.
+                    for msg in reversed(page):
+                        if long_media(msg) is None:
+                            continue
+                        key = media_key(handle, msg)
+                        if already_sent(state, key):
+                            # Already in the target channel: skip, but keep walking.
+                            continue
+                        await client.send_file(
+                            target, msg.media,
+                            caption=format_caption(name, audio_duration(msg)),
+                        )
+                        remember_sent(state, key)
+                        sent += 1
+                        clock = format_caption("", audio_duration(msg)).splitlines()[1]
+                        print(f"⬅️ {name} — {clock} (id={msg.id})")
+                        await asyncio.sleep(SEND_GAP)
+                        if sent >= BACKFILL_LIMIT:
+                            break
+                print(f"⬅️ {name}: {sent} historical file(s) forwarded")
+            except FloodWaitError as e:
+                # One rate-limited channel must not kill the whole run.
+                failed += 1
+                print(f"⚠️ {handle}: flood wait {e.seconds}s, skipped")
+            except Exception as e:
+                failed += 1
+                print(f"⚠️ {handle}: {type(e).__name__}: {e}")
             continue
 
         seen = state["channels"][handle]
