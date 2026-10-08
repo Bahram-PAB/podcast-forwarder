@@ -9,6 +9,7 @@ Document whose duration lives on DocumentAttributeAudio. A plain object with a
 import inspect
 import json
 import unittest
+from pathlib import Path
 
 from telethon import utils
 from telethon.tl.types import (
@@ -283,6 +284,44 @@ class TestResolveTarget(unittest.TestCase):
         # Chat -> -id, channel -> -1000...id; utils.get_peer_id does exactly this.
         self.assertEqual(utils.get_peer_id(PeerChannel(1171526333)), -1001171526333)
         self.assertEqual(utils.get_peer_id(PeerChat(547239020)), -547239020)
+
+
+
+
+class TestExitCode(unittest.TestCase):
+    """A run where every channel failed used to report green.
+
+    GitHub reads only the process exit code, so 0 means "success" no matter
+    how much of the run actually fell over.
+    """
+
+    def setUp(self):
+        self.src = inspect.getsource(bot)
+
+    def test_any_failure_exits_nonzero(self):
+        self.assertIn("if failed > 0:", self.src)
+        self.assertIn("sys.exit(1)", self.src)
+
+    def test_exit_comes_after_the_state_is_written(self):
+        # Exiting first would drop the cursors of the channels that did work.
+        self.assertLess(self.src.index("(HERE / \"state.json\")"),
+                        self.src.index("sys.exit(1)"))
+
+
+class TestWorkflowTriggers(unittest.TestCase):
+    """The schedule drifted hours and hid failures; an external trigger fires it."""
+
+    def setUp(self):
+        wf = Path(__file__).parent / ".github" / "workflows" / "forward.yml"
+        self.text = wf.read_text(encoding="utf-8")
+
+    def test_no_schedule(self):
+        # Match the trigger key, not the word — the comment explains why.
+        self.assertNotRegex(self.text, r"(?m)^\s*schedule:")
+
+    def test_commit_state_runs_even_after_a_failed_run(self):
+        i = self.text.index("name: Commit state")
+        self.assertIn("if: always()", self.text[i:i + 400])
 
 
 if __name__ == "__main__":

@@ -279,6 +279,11 @@ async def main():
     print(f"forwarded={forwarded} failed={failed}")
     await client.disconnect()
 
+    # GitHub only greys a run green or red on the exit code. Returning 0 while
+    # every channel failed hid a completely dead run behind a green check.
+    if failed > 0:
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

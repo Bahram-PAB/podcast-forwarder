@@ -1,7 +1,7 @@
 name: forward
+# No schedule: an external trigger fires this (GitHub cron drifted ~5h and
+# reported failed runs green). workflow_dispatch stays for manual runs.
 on:
-  schedule:
-    - cron: '0 */8 * * *'   # every 8h, so the repo runs under observation for days
   workflow_dispatch:
 # One Telegram session = one auth key = one IP. GitHub runners get random IPs,
 # so two overlapping runs would burn the session with AuthKeyDuplicatedError.
@@ -35,6 +35,9 @@ jobs:
           TARGET_CHAT_ID: ${{ secrets.TARGET_CHAT_ID }}
 
       - name: Commit state
+        # always(): bot.py now exits 1 on any failed channel, and skipping this
+        # step would throw away the cursor advances of the channels that did work.
+        if: always()
         run: |
           git config user.name  'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
