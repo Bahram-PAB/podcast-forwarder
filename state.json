@@ -1,22 +1,22 @@
 {
   "channels": {
-    "ahangify": 110393,
+    "ahangify": 110397,
     "gooshvaaareh": 7254,
-    "remixjavan_com": 55157,
-    "Azerbaijan20": 96740,
+    "remixjavan_com": 55158,
+    "Azerbaijan20": 96741,
     "melody9": 42396,
     "savadnameh": 11349,
-    "kuchebazariha": 122908,
-    "musicir": 157094,
-    "SamFoni": 258353,
-    "bir3da": 97861,
-    "Ritmg": 41216,
+    "kuchebazariha": 122911,
+    "musicir": 157101,
+    "SamFoni": 258361,
+    "bir3da": 97866,
+    "Ritmg": 41225,
     "birmusicOfficial": 14245,
-    "M0_ZK": 61750,
+    "M0_ZK": 61754,
     "icyRemix": 28603,
-    "AHANGAWMEH": 25719,
-    "flowwithmusic": 51204,
-    "Herochnl": 135874
+    "AHANGAWMEH": 25722,
+    "flowwithmusic": 51207,
+    "Herochnl": 135945
   },
   "sent": {
     "AHANGAWMEH#25387": 1,
@@ -114,6 +114,7 @@
     "kuchebazariha#122883": 1,
     "icyRemix#28603": 1,
     "melody9#42396": 1,
-    "SamFoni#258337": 1
+    "SamFoni#258337": 1,
+    "Ritmg#41219": 1
   }
 }
