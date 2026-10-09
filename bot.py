@@ -55,12 +55,12 @@ def clock(seconds):
     return fa_digits(f"{str(seconds // 60).zfill(2)}:{str(seconds % 60).zfill(2)}")
 
 
-SOURCE_URL = "https://t.me/remixforwarder"
+SOURCE_URL = "@remixforwarder"
 
 
 def format_caption(name):
     """Caption: source line, rule, channel link."""
-    return f"منبع :{name}\n--------------\n@@url:`{SOURCE_URL}`"
+    return f"منبع :{name}\n--------------\n`{SOURCE_URL}`"
 
 
 def load_channels():
