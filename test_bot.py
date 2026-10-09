@@ -87,12 +87,23 @@ class TestCaption(unittest.TestCase):
             lines = format_caption(name).splitlines()
             self.assertEqual(lines[0], f"منبع :{name}")
             self.assertEqual(lines[1], "--------------")
-            self.assertEqual(lines[2], "@@url:`https://t.me/remixforwarder`")
+            self.assertEqual(lines[2], "[@remixforwarder](https://t.me/remixforwarder)")
             self.assertEqual(len(lines), 3)
+
+    def test_link_actually_parses_to_a_clickable_url(self):
+        # Backticks give MessageEntityCode — monospace, never a link. This is
+        # the regression that silently shipped a dead handle.
+        from telethon.extensions import markdown
+        from bot import format_caption
+        text, entities = markdown.parse(format_caption("X"))
+        self.assertIn("@remixforwarder", text)
+        kinds = [type(e).__name__ for e in entities]
+        self.assertIn("MessageEntityTextUrl", kinds)
+        self.assertNotIn("MessageEntityCode", kinds)
 
     def test_name_is_not_dropped(self):
         from bot import format_caption
-        self.assertIn("@@url:", format_caption("کوچه بازاری ها"))
+        self.assertIn("منبع :کوچه بازاری ها", format_caption("کوچه بازاری ها"))
 
 
 class TestClock(unittest.TestCase):

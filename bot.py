@@ -55,12 +55,18 @@ def clock(seconds):
     return fa_digits(f"{str(seconds // 60).zfill(2)}:{str(seconds % 60).zfill(2)}")
 
 
-SOURCE_URL = "@remixforwarder"
+SOURCE_URL = "https://t.me/remixforwarder"
 
 
 def format_caption(name):
-    """Caption: source line, rule, channel link."""
-    return f"منبع :{name}\n--------------\n`{SOURCE_URL}`"
+    """Caption: source line, rule, channel link.
+
+    Markdown link, not backticks: `@user` inside backticks parses to
+    MessageEntityCode (monospace), which is not clickable. The link form
+    parses to MessageEntityTextUrl, so Telegram shows @remixforwarder as a
+    real t.me link.
+    """
+    return f"منبع :{name}\n--------------\n[@remixforwarder]({SOURCE_URL})"
 
 
 def load_channels():
