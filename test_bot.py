@@ -79,17 +79,34 @@ class TestFilter(unittest.TestCase):
 
 
 class TestCaption(unittest.TestCase):
-    def test_persian_digits_without_mixed_zero(self):
+    """Source line + rule + channel link, exactly as specified."""
+
+    def test_caption_layout(self):
         from bot import format_caption
-        self.assertEqual(format_caption("گوش‌واره", 900), "گوش‌واره\n۱۵:۰۰")
-        self.assertEqual(format_caption("آذربایجان", 960), "آذربایجان\n۱۶:۰۰")
-        self.assertEqual(format_caption("X", 3661), "X\n۶۱:۰۱")
+        for name in ("آیسی ریمیکس", "هیرو", "X"):
+            lines = format_caption(name).splitlines()
+            self.assertEqual(lines[0], f"منبع :{name}")
+            self.assertEqual(lines[1], "--------------")
+            self.assertEqual(lines[2], "@@url:`https://t.me/remixforwarder`")
+            self.assertEqual(len(lines), 3)
+
+    def test_name_is_not_dropped(self):
+        from bot import format_caption
+        self.assertIn("@@url:", format_caption("کوچه بازاری ها"))
+
+
+class TestClock(unittest.TestCase):
+    def test_persian_digits_without_mixed_zero(self):
+        from bot import clock
+        self.assertEqual(clock(900), "۱۵:۰۰")
+        self.assertEqual(clock(960), "۱۶:۰۰")
+        self.assertEqual(clock(3661), "۶۱:۰۱")
 
     def test_no_ascii_digits(self):
-        from bot import format_caption
+        from bot import clock
         for secs in (905, 3599, 10800):
             self.assertFalse(
-                any(c.isdigit() and c.isascii() for c in format_caption("نام", secs))
+                any(c.isdigit() and c.isascii() for c in clock(secs))
             )
 
 

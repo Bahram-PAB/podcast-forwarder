@@ -50,10 +50,17 @@ def long_media(msg):
     return None
 
 
-def format_caption(name, seconds):
+def clock(seconds):
     # Pad zeros in ASCII first, then convert — padding after gives "0۸".
-    clock = f"{str(seconds // 60).zfill(2)}:{str(seconds % 60).zfill(2)}"
-    return f"{name}\n{fa_digits(clock)}"
+    return fa_digits(f"{str(seconds // 60).zfill(2)}:{str(seconds % 60).zfill(2)}")
+
+
+SOURCE_URL = "https://t.me/remixforwarder"
+
+
+def format_caption(name):
+    """Caption: source line, rule, channel link."""
+    return f"منبع :{name}\n--------------\n@@url:`{SOURCE_URL}`"
 
 
 def load_channels():
@@ -198,12 +205,12 @@ async def main():
                             continue
                         await client.send_file(
                             target, msg.media,
-                            caption=format_caption(name, audio_duration(msg)),
+                            caption=format_caption(name),
                         )
                         remember_sent(state, key)
                         sent += 1
-                        clock = format_caption("", audio_duration(msg)).splitlines()[1]
-                        print(f"⬅️ {name} — {clock} (id={msg.id})")
+                        stamp = clock(audio_duration(msg))
+                        print(f"⬅️ {name} — {stamp} (id={msg.id})")
                         await asyncio.sleep(SEND_GAP)
                         if sent >= BACKFILL_LIMIT:
                             break
@@ -247,15 +254,15 @@ async def main():
                     # no 50 MB cap, and the session account must be in the group.
                     await client.send_file(
                         target, msg.media,
-                        caption=format_caption(name, audio_duration(msg)),
+                        caption=format_caption(name),
                     )
                     remember_sent(state, media_key(handle, msg))
                     # Cursor advances only after a confirmed send, so a failure
                     # retries this post on the next run instead of losing it.
                     state["channels"][handle] = max(state["channels"][handle], msg.id)
                     forwarded += 1
-                    clock = format_caption("", audio_duration(msg)).splitlines()[1]
-                    print(f"✅ {name} — {clock}")
+                    stamp = clock(audio_duration(msg))
+                    print(f"✅ {name} — {stamp}")
                     await asyncio.sleep(SEND_GAP)
 
                 # Nothing left above min_id=seen once the page stops advancing.
